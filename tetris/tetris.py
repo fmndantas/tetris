@@ -179,13 +179,12 @@ class Game(object):
             yield from asyncio.sleep(0)
 
     @asyncio.coroutine
-    def timer(self):
-        keyboard.unhook_all()
+    def trigger_timer(self):
         yield from asyncio.sleep(_LEVELS[self.level])
 
     @asyncio.coroutine
     def __inner_loop(self):
-        futures = [self.right(), self.left(), self.timer()]
+        futures = [self.right(), self.left(), self.trigger_timer()]
         done, pendent = yield from asyncio.wait(futures, return_when=FIRST_COMPLETED)
         for future in pendent:
             future.cancel()
