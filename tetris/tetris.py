@@ -44,6 +44,10 @@ class Shape(object):
         self.grid[pivot_pos].is_pivot = True
         self.pivot = Point(*pivot_pos)
 
+    @property
+    def pivot_position(self):
+        return self.grid[self.pivot].gameboard_position
+
     def rot90_fall_blck(self, k=1):
         self.grid = np.rot90(self.grid, k=k)
 
@@ -54,39 +58,42 @@ class Shape(object):
             continue
         return True
 
-    def can_shape_left(self, gameboard):
-        print('can shape left')
+    def can_shape_left(self):
+        print('can_shape_left')
+        return self.left > 0
 
-    def can_shape_right(self, gameboard):
-        print('can shape right')
+    def can_shape_right(self, width):
+        print('can_shape_right')
+        return self.right < width - 1
 
     def is_shape_on_gameboard_top(self, height):
-        return self.top >= height - 1
+        print('is_shape_on_gameboard_top')
+        return self.top >= height - 1  # todo check this
 
     @property
     def bottom(self):
-        return min(self.grid[lin, col].gameboard_position[1]
+        return min(self.grid[lin, col].gameboard_position.y
                    for lin in range(self.width)
                    for col in range(self.height)
                    if isinstance(self.grid[lin, col], Block))
 
     @property
     def top(self):
-        return max(self.grid[lin, col].gameboard_position[1]
+        return max(self.grid[lin, col].gameboard_position.y
                    for lin in range(self.width)
                    for col in range(self.height)
                    if isinstance(self.grid[lin, col], Block))
 
     @property
     def left(self):
-        return min(self.grid[lin, col].gameboard_position[0]
+        return min(self.grid[lin, col].gameboard_position.x
                    for lin in range(self.width)
                    for col in range(self.height)
                    if isinstance(self.grid[lin, col], Block))
 
     @property
     def right(self):
-        return max(self.grid[lin, col].gameboard_position[0]
+        return max(self.grid[lin, col].gameboard_position.x
                    for lin in range(self.width)
                    for col in range(self.height)
                    if isinstance(self.grid[lin, col], Block))
@@ -131,24 +138,29 @@ class ShapeGenerator:
             yield choice(self.shapes)
 
 
-_LEVELS = {1: 5}
-
-
 class Game(object):
     def __init__(self, width=10, height=10):
         self.width = width
         self.height = height
         self.gameboard = np.zeros((width, height), object)
         self.curr_shape = None
-        self.sg = ShapeGenerator()()
+        self.sg = ShapeGenerator()()  # todo this is ugly
         self.pivot_initial_pos = {0: (0, 10)}
         self.is_game_over = False
-        self.level = 1
-        self.keys = {'right': 'd', 'left': 'a', 'down': 'd', 'rotate': 'r'}
+        self.level = (i + 1 for i in range(20))
+        self.keys = {'right': 'd', 'left': 'a', 'down': 's', 'rotate': 'r'}
         self._get_back_to_shape_generation = False
+        self.levels = {1: 5}
 
     def generate_next_shape(self):
         self.curr_shape = self.sg.__next__()
+
+    def clear_curr_shape(self):
+        for lin in range(self.curr_shape.width):
+            for col in range(self.curr_shape.height):
+                if isinstance(self.curr_shape.grid[lin, col], Block):
+                    self.gameboard[self.curr_shape.grid[lin, col].gameboard_position] = 0
+                    self.curr_shape.grid[lin, col].gameboard_position = None
 
     def put_shape_in_gameboard(self, intl_pnt: Point, shape=None) -> None:
         if shape is not None:
@@ -161,38 +173,47 @@ class Game(object):
                     disty = col - pivot.y
                     gb = Point(intl_pnt.x + distx, intl_pnt.y + disty)
                     self.gameboard[gb.x, gb.y] = grid[lin, col]
-                    self.gameboard[gb.x, gb.y].gameboard_position = gb.x, gb.y  # changing Blocks.gameboard_position
+                    self.gameboard[gb.x, gb.y].gameboard_position = gb  # changing Blocks.gameboard_position
 
     def move_curr_shape_right(self, k=1):
-        print('move current shape to right')
+        if self.curr_shape.can_shape_right(self.width):
+            curr_pivot_pos = self.curr_shape.pivot_position
+            self.clear_curr_shape()
+            self.put_shape_in_gameboard(Point(curr_pivot_pos.x + 1, curr_pivot_pos.y))
 
     def move_curr_shape_left(self, k=1):
-        print('move current shape to left')
+        if self.curr_shape.can_shape_left:
+            curr_pivot_pos = self.curr_shape.pivot_position
+            self.clear_curr_shape()
+            self.put_shape_in_gameboard(Point(curr_pivot_pos.x - 1, curr_pivot_pos.y))
 
     def move_curr_shape_down(self, k=1):
-        print('move current shape down')
+        print('move_current_shape_down')
 
     def rotate_curr_shape_clockwise(self, k=1):
-        print('rotate current shape clockwise')
+        print('rotate_current_shape_clockwise')
 
     @asyncio.coroutine
     def right(self, k=1):
         while 1:
-            if keyboard.is_pressed(self.keys['right']) and self.curr_shape.can_shape_right():
+            if keyboard.is_pressed(self.keys['right']) \
+                    and self.curr_shape.can_shape_right(self.gameboard):
                 self.move_curr_shape_right(k=k)
             yield from asyncio.sleep(0)
 
     @asyncio.coroutine
     def left(self, k=1):
         while 1:
-            if keyboard.is_pressed(self.keys['left']) and self.curr_shape.can_shape_left():
+            if keyboard.is_pressed(self.keys['left']) \
+                    and self.curr_shape.can_shape_left():
                 self.move_curr_shape_left(k=k)
             yield from asyncio.sleep(0)
 
     @asyncio.coroutine
     def down(self, k=1):
         while 1:
-            if keyboard.is_pressed(self.keys['down']) and self.curr_shape.can_shape_fall():
+            if keyboard.is_pressed(self.keys['down']) \
+                    and self.curr_shape.can_shape_fall(self.gameboard):
                 self.move_curr_shape_down(k=k)
             yield from asyncio.sleep(0)
 
@@ -207,12 +228,12 @@ class Game(object):
     @asyncio.coroutine
     def trigger_timer(self):
         self.move_curr_shape_down()  # fall shape one time (natural falling)
-        yield from asyncio.sleep(_LEVELS[self.level])
+        yield from asyncio.sleep(self.levels[self.level])
 
     @asyncio.coroutine
     def asynchronous_can_shape_fall(self):
         while 1:
-            if not self.curr_shape.can_shape_fall():
+            if not self.curr_shape.can_shape_fall(self.gameboard):
                 self.after_curr_shape_cannot_fall()  # after asynchronous_can_shape_fall return
                 self._get_back_to_shape_generation = True
                 return None
@@ -238,29 +259,30 @@ class Game(object):
     def game_over(self):
         self.is_game_over = True
 
-    def is_any_row_completed(self):
-        col = self.curr_shape.bottom
-        gm_brd_col = [self.gameboard[i, col] for i in range(self.width - 1)]
-        for item in gm_brd_col:
+    @staticmethod
+    def is_row_completed(row):
+        for item in row:
             if not isinstance(item, Block):
                 return False
         return True
 
-    def score_and_remove_completed_rows(self):
-        print('remover e pontuar')
+    def score_and_remove_row(self, height):
+        print('score_and_remove_row')
 
     def after_curr_shape_cannot_fall(self):
         if self.curr_shape.is_shape_on_gameboard_top:
             self.game_over()
         else:
-            if self.is_any_row_completed():
-                self.score_and_remove_completed_rows()
+            rows = [self.gameboard[:, j] for j in range(self.height)]
+            for height, row in enumerate(rows):
+                if self.is_row_completed(row):
+                    self.score_and_remove_row(height)
 
     def start(self):
         while not self.is_game_over:
             self.generate_next_shape()
             self.put_shape_in_gameboard(Point(5, 5))  # todo start points?
-            if self.curr_shape.can_shape_fall():
+            if self.curr_shape.can_shape_fall(self.gameboard):
                 while not self._get_back_to_shape_generation:
                     self.__trigger_loop()  # fall shape one time and trigger loop N ms
                 continue
