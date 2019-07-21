@@ -52,19 +52,28 @@ class Shape(object):
         self.grid = np.rot90(self.grid, k=k)
 
     def can_shape_fall(self, gameboard):
-        for col in range(self.left, self.right + 1):
-            if isinstance(gameboard[col, self.bottom - 1], Block) or self.bottom == 0:
-                return False
+        for lin in range(self.left, self.right + 1):
+            if isinstance(gameboard[lin, self.bottom], Block):
+                if isinstance(gameboard[lin, self.bottom - 1], Block) or self.bottom == 0:
+                    return False
         return True
 
-    def can_shape_move_left(self):
-        return self.left > 0
+    def can_shape_move_left(self, gameboard):
+        for col in range(self.bottom, self.top + 1):
+            if isinstance(gameboard[self.left, col], Block):
+                if self.left == 0 or isinstance(gameboard[self.left - 1, col], Block):
+                    return False
+        return True
 
-    def can_shape_move_right(self, width):
-        return self.right < width - 1
+    def can_shape_move_right(self, gameboard):
+        for col in range(self.bottom, self.top + 1):
+            if isinstance(gameboard[self.right, col], Block):
+                if self.right == np.shape(gameboard)[0] - 1 or isinstance(gameboard[self.right + 1, col], Block):
+                    return False
+        return True
 
     def is_shape_on_gameboard_top(self, height):
-        return self.top == height - 1  # todo check this
+        return self.top == height - 1
 
     @property
     def bottom(self):
@@ -141,12 +150,11 @@ class Game(object):
         self.gameboard = np.zeros((width, height), object)
         self.curr_shape = None
         self.sg = ShapeGenerator()()  # todo this is ugly
-        self.pivot_initial_pos = {0: (0, 10)}
         self.is_game_over = False
         self.keys = {'right': 'd', 'left': 'a', 'down': 's', 'rotate': 'r'}
         self._get_back_to_shape_generation = False
         self.level = 1
-        self.levels = {1: 1}
+        self.levels = {1: 1, 2: 0.5, 3: 0.25}
         self.initial_points = {
             # todo generalize this for width, heigth != 10, 10
             1: Point(4, 9),
@@ -159,10 +167,10 @@ class Game(object):
         }
 
     def __repr__(self):
-        return np.rot90(self.gameboard).__str__().replace('0', ' ')
+        return np.rot90(self.gameboard).__str__().replace('0', '.')
 
     def __str__(self):
-        return np.rot90(self.gameboard).__str__().replace('0', ' ')
+        return np.rot90(self.gameboard).__str__().replace('0', '.')
 
     def generate_next_shape(self):
         self.curr_shape = self.sg.__next__()
@@ -204,7 +212,7 @@ class Game(object):
                     gb_point.x, gb_point.y].gameboard_position = gb_point  # changing Blocks.gameboard_position
 
     def move_curr_shape_right(self, k=1):
-        if self.curr_shape.can_shape_move_right(self.width):
+        if self.curr_shape.can_shape_move_right(self.gameboard):
             curr_pivot_pos = self.curr_shape.pivot_position
             self.clear_curr_shape()
             self.put_shape_in_gameboard(Point(curr_pivot_pos.x + 1, curr_pivot_pos.y))
@@ -227,26 +235,23 @@ class Game(object):
     @asyncio.coroutine
     def right(self, k=1):
         while 1:
-            if keyboard.is_pressed(self.keys['right']) \
-                    and self.curr_shape.can_shape_move_right(self.gameboard):
+            if keyboard.is_pressed(self.keys['right']):
                 self.move_curr_shape_right(k=k)
-            yield from asyncio.sleep(0)
+            yield from asyncio.sleep(0.1)  # todo change the time to a class constant
 
     @asyncio.coroutine
     def left(self, k=1):
         while 1:
-            if keyboard.is_pressed(self.keys['left']) \
-                    and self.curr_shape.can_shape_move_left():
+            if keyboard.is_pressed(self.keys['left']):
                 self.move_curr_shape_left(k=k)
-            yield from asyncio.sleep(0)
+            yield from asyncio.sleep(0.1)
 
     @asyncio.coroutine
     def down(self, k=1):
         while 1:
-            if keyboard.is_pressed(self.keys['down']) \
-                    and self.curr_shape.can_shape_fall(self.gameboard):
+            if keyboard.is_pressed(self.keys['down']):
                 self.move_curr_shape_down(k=k)
-            yield from asyncio.sleep(0)
+            yield from asyncio.sleep(0.1)
 
     @asyncio.coroutine
     def rotate(self, k=1):
@@ -254,30 +259,26 @@ class Game(object):
             if keyboard.is_pressed(
                     self.keys['rotate']):  # todo rotation function should work in extremities as well
                 self.rotate_curr_shape_clockwise(k=k)
-            yield from asyncio.sleep(0)
+            yield from asyncio.sleep(0.1)
 
     @asyncio.coroutine
     def trigger_timer(self):
         print('DEBUG >>> trigger_timer')
-        # if self.curr_shape.can_shape_fall(self.gameboard):
-        if self.curr_shape.can_shape_fall(self.gameboard):
-            self.move_curr_shape_down()  # fall shape one time (natural falling)
-            print('DEBUG >>> trigger_timer: natural falling')
-        else:
-            print('DEBUG >>> natural falling blocked')
+        self.move_curr_shape_down()  # fall shape one time (natural falling)
+        print('DEBUG >>> trigger_timer: natural falling')
         yield from asyncio.sleep(self.levels[self.level])
 
-    @asyncio.coroutine
-    def asynchronous_can_shape_fall(self):
-        print('DEBUG >>> asynchronous_can_shape_fall')
-        while 1:
-            if not self.curr_shape.can_shape_fall(self.gameboard):
-                print('DEBUG >>> asynchronous_can_shape_fall: False')
-                self._get_back_to_shape_generation = True
-                print('DEBUG >>> _get_back_to_shape_generation = True')
-                self.after_curr_shape_cannot_fall()  # after asynchronous_can_shape_fall return
-                # return None
-            yield from asyncio.sleep(0)
+    # @asyncio.coroutine
+    # def asynchronous_can_shape_fall(self):
+    #     print('DEBUG >>> asynchronous_can_shape_fall')
+    #     while 1:
+    #         if not self.curr_shape.can_shape_fall(self.gameboard):
+    #             print('DEBUG >>> asynchronous_can_shape_fall: False')
+    #             self._get_back_to_shape_generation = True
+    #             print('DEBUG >>> _get_back_to_shape_generation = True')
+    #             self.after_curr_shape_cannot_fall()  # after asynchronous_can_shape_fall return
+    #             return None
+    #         yield from asyncio.sleep(0)
 
     @asyncio.coroutine
     def __loop(self):
@@ -285,12 +286,14 @@ class Game(object):
                    self.left(),
                    self.down(),
                    self.rotate(),
-                   self.trigger_timer(),
-                   self.asynchronous_can_shape_fall()]
+                   self.trigger_timer()]
+        # self.asynchronous_can_shape_fall()]
         done, pendent = yield from asyncio.wait(futures, return_when=FIRST_COMPLETED)
         print('DEBUG >>> return de __loop')
         for future in pendent:
             future.cancel()
+        if not self.curr_shape.can_shape_fall(self.gameboard):
+            self._get_back_to_shape_generation = True
 
     def __trigger_loop(self):
         ioloop = asyncio.new_event_loop()
