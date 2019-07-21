@@ -52,8 +52,8 @@ class Shape(object):
         self.grid = np.rot90(self.grid, k=k)
 
     def can_shape_fall(self, gameboard):
-        for lin in range(self.left, self.right):
-            if isinstance(gameboard[lin, self.bottom - 1], Block) or self.bottom == 0:
+        for col in range(self.left, self.right + 1):
+            if isinstance(gameboard[col, self.bottom - 1], Block) or self.bottom == 0:
                 return False
         return True
 
@@ -146,7 +146,7 @@ class Game(object):
         self.keys = {'right': 'd', 'left': 'a', 'down': 's', 'rotate': 'r'}
         self._get_back_to_shape_generation = False
         self.level = 1
-        self.levels = {1: 0.1}
+        self.levels = {1: 1}
         self.initial_points = {
             # todo generalize this for width, heigth != 10, 10
             1: Point(4, 9),
