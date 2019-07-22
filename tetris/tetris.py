@@ -41,17 +41,14 @@ class Shape(object):
                 self.grid[pos] = Block(color=self.color)
 
     def set_pivot(self, pivot_pos):
-        """Pivot inside Shape.grid"""
+        """set Pivot inside Shape.grid"""
         self.grid[pivot_pos].is_pivot = True
         self.pivot = Point(*pivot_pos)
 
     @property
-    def pivot_position(self):
-        """Pivot position in Game.gameboard"""
+    def gameboard_pivot_position(self):
+        """Pivot position from Game.gameboard"""
         return self.grid[self.pivot].gameboard_position
-
-    def rot90_fall_blck(self, k=1):
-        self.grid = np.rot90(self.grid, k=k)
 
     def can_shape_fall(self, gameboard):
         for lin in range(self.left, self.right + 1):
@@ -105,6 +102,25 @@ class Shape(object):
                    for col in range(self.height)
                    if isinstance(self.grid[lin, col], Block))
 
+    def prepare_shape_for_rotation(self, sense='cw'):
+        """Update all-related grid data for a rotated Shape\n
+
+        Parameters
+        ----------
+        sense: 'cw' -> clockwise, 'ccw' -> counter-clockwise
+        """
+        k = 3
+        if sense == 'ccw':
+            k = 1
+        self.width, self.height = self.height, self.width
+        self.grid = np.rot90(self.grid, k=k)
+        for lin in range(self.width):
+            for col in range(self.height):
+                if isinstance(self.grid[lin, col], Block):
+                    self.grid[lin, col].gameboard_position = None
+                    if self.grid[lin, col].is_pivot:
+                        self.set_pivot(Point(lin, col))
+
     def __repr__(self):
         return str(np.rot90(self.grid)).replace('[', ' ').replace(']', ' ').replace('0', ' ')
 
@@ -157,7 +173,7 @@ class Game(object):
         self.keys = {'right': 'd', 'left': 'a', 'down': 's', 'rotate': 'r'}
         self._get_back_to_shape_generation = False
         self.level = 1
-        self.levels = {1: 1, 2: 0.5, 3: 0.25}
+        self.levels = {1: 2, 2: 0.5, 3: 0.25}
         self.initial_points = {
             # todo generalize this for width, heigth != 10, 10
             1: Point(4, 9),
@@ -168,6 +184,7 @@ class Game(object):
             6: Point(4, 8),
             7: Point(4, 8)
         }
+        # todo maybe a response time (for async methods) that varies with current level?
 
     def __repr__(self):
         return np.rot90(self.gameboard).__str__().replace('0', '.')
@@ -189,7 +206,7 @@ class Game(object):
                     yield gb, Point(lin, col)
 
     def clear_curr_shape(self):
-        for gb_point, s_point in self.gameboard_points_and_shape_points(self.curr_shape.pivot_position):
+        for gb_point, s_point in self.gameboard_points_and_shape_points(self.curr_shape.gameboard_pivot_position):
             if isinstance(self.gameboard[gb_point.x, gb_point.y], Block):
                 self.gameboard[gb_point.x, gb_point.y] = 0
                 self.curr_shape.grid[s_point.x, s_point.y].gameboard_position = None
@@ -199,8 +216,8 @@ class Game(object):
         return self.initial_points[self.curr_shape.shape_id]
 
     def is_curr_shape_insertable(self, intl_pnt: Point):
-        for point, _ in self.gameboard_points_and_shape_points(intl_pnt):
-            if isinstance(self.gameboard[point.x, point.y], Block):
+        for gb_point, _ in self.gameboard_points_and_shape_points(intl_pnt):
+            if isinstance(self.gameboard[gb_point.x, gb_point.y], Block):
                 return False
         return True
 
@@ -210,56 +227,59 @@ class Game(object):
         pivot, grid = self.curr_shape.pivot, self.curr_shape.grid
         for gb_point, s_point in self.gameboard_points_and_shape_points(intl_pnt):
             if isinstance(grid[s_point.x, s_point.y], Block):
-                self.gameboard[gb_point.x, gb_point.y] = grid[s_point.x, s_point.y]
+                self.gameboard[gb_point.x, gb_point.y] = grid[s_point.x, s_point.y]  # Game.gameboard
                 self.gameboard[gb_point.x, gb_point.y].gameboard_position = gb_point  # Blocks.gameboard_position
 
-    def move_curr_shape_right(self, k=1):
+    def move_curr_shape_right(self):
         if self.curr_shape.can_shape_move_right(self.gameboard):
-            curr_pivot_pos = self.curr_shape.pivot_position
+            pivot = self.curr_shape.gameboard_pivot_position
             self.clear_curr_shape()
-            self.put_shape_in_gameboard(Point(curr_pivot_pos.x + 1, curr_pivot_pos.y))
+            self.put_shape_in_gameboard(Point(pivot.x + 1, pivot.y))
 
-    def move_curr_shape_left(self, k=1):
+    def move_curr_shape_left(self):
         if self.curr_shape.can_shape_move_left(self.gameboard):
-            curr_pivot_pos = self.curr_shape.pivot_position
+            pivot = self.curr_shape.gameboard_pivot_position
             self.clear_curr_shape()
-            self.put_shape_in_gameboard(Point(curr_pivot_pos.x - 1, curr_pivot_pos.y))
+            self.put_shape_in_gameboard(Point(pivot.x - 1, pivot.y))
 
-    def move_curr_shape_down(self, k=1):
+    def move_curr_shape_down(self):
         if self.curr_shape.can_shape_fall(self.gameboard):
-            curr_pivot_pos = self.curr_shape.pivot_position
+            pivot = self.curr_shape.gameboard_pivot_position
             self.clear_curr_shape()
-            self.put_shape_in_gameboard(Point(curr_pivot_pos.x, curr_pivot_pos.y - 1))
+            self.put_shape_in_gameboard(Point(pivot.x, pivot.y - 1))
 
-    def rotate_curr_shape_clockwise(self, k=3):
-        self.curr_shape = np.rot90(self.curr_shape, k=k)
+    def rotate_curr_shape_clockwise(self):
+        pivot = self.curr_shape.gameboard_pivot_position
+        self.clear_curr_shape()
+        self.curr_shape.prepare_shape_for_rotation(sense='cw')
+        self.put_shape_in_gameboard(pivot)
 
     @asyncio.coroutine
-    def right(self, k=1):
+    def right(self):
         while 1:
             if keyboard.is_pressed(self.keys['right']):
-                self.move_curr_shape_right(k=k)
+                self.move_curr_shape_right()
             yield from asyncio.sleep(0.1)  # todo change the time to a class constant
 
     @asyncio.coroutine
     def left(self, k=1):
         while 1:
             if keyboard.is_pressed(self.keys['left']):
-                self.move_curr_shape_left(k=k)
+                self.move_curr_shape_left()
             yield from asyncio.sleep(0.1)
 
     @asyncio.coroutine
-    def down(self, k=1):
+    def down(self):
         while 1:
             if keyboard.is_pressed(self.keys['down']):
-                self.move_curr_shape_down(k=k)
+                self.move_curr_shape_down()
             yield from asyncio.sleep(0.1)
 
     @asyncio.coroutine
-    def rotate(self, k=1):
+    def rotate(self):
         while 1:
             if keyboard.is_pressed(self.keys['rotate']):  # todo rotation function should work in extremities as well
-                self.rotate_curr_shape_clockwise(k=k)
+                self.rotate_curr_shape_clockwise()
             yield from asyncio.sleep(0.1)
 
     @asyncio.coroutine
@@ -296,6 +316,7 @@ class Game(object):
         return True
 
     def score_and_remove_row(self, height):
+        # todo score_and_remove_row
         pass
 
     def after_curr_shape_cannot_fall(self):
@@ -320,7 +341,7 @@ class Game(object):
             if self.curr_shape.can_shape_fall(self.gameboard):
                 while not self._get_back_to_shape_generation:
                     self.__trigger_loop()  # fall shape one time and trigger loop N ms
-                    print(self)  # todo clear this after debug
+                    print(self, '\n')  # todo clear this after debug
                 continue
             else:
                 self.after_curr_shape_cannot_fall()
