@@ -1,4 +1,6 @@
 import asyncio
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtGui, QtCore
 from collections import namedtuple
 from concurrent.futures import FIRST_COMPLETED
 
@@ -346,3 +348,31 @@ class Game(object):
             else:
                 self.after_curr_shape_cannot_fall()
         print('FINALE GAME OVER!')
+
+
+class Render(pg.GraphicsLayoutWidget):
+    def __init__(self):
+        super().__init__()
+        self.setBackground('#ffffff')
+        self.game = Game()
+
+    # todo Render.start() and Game().start -> asynchronous!!!
+
+    def make_guidelines(self):
+        pass
+
+    def render_current_shape(self):
+        pass
+
+    def render_frame(self):
+        pass
+
+
+if __name__ == '__main__':
+    import sys
+
+    app = QtGui.QApplication([])
+    render = Render()
+    render.show()
+    if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
+        QtGui.QApplication.instance().exec_()
