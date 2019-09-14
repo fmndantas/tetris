@@ -1,8 +1,7 @@
 import unittest
 
-import numpy as np
-
 import tetris
+from tetris import *
 
 Point = tetris.Point
 
@@ -19,11 +18,13 @@ class GameTests(unittest.TestCase):
     def test_shape_generation(self):
         self.assertEqual(self.game.curr_shape, None)
         self.game.generate_next_shape()
-        self.assertNotEqual(self.game.curr_shape, None)
+        self.assertFalse(self.game.curr_shape is self.shapes[self.game.curr_shape.shape_id - 1])
+        self.game.curr_shape.grid[0, 0] = 'change test'
+        self.assertNotEqual(self.shapes[self.game.curr_shape.shape_id - 1].grid[0, 0], 'change test')
 
     def test_put_shape_in_gameboard(self):
         for i in range(7):
-            self.game.curr_shape = self.shapes[i]
+            self.game.curr_shape = self.shapes[i].shape_copy()
             ip = get_ip(self.game)
             self.game.put_shape_in_gameboard(ip)
             left = self.game.curr_shape.left
@@ -41,19 +42,8 @@ class GameTests(unittest.TestCase):
             self.assertEqual(gb_slice, sh_slice)
             self.game.gameboard = np.zeros_like(self.game.gameboard)
 
-    def test_deep_shape_copy(self):
-        source = self.shapes[0]
-        destiny = source.shape_copy()
-        for key in destiny.__dict__.keys():
-            if key != 'grid':
-                self.assertEqual(destiny.__getattribute__(key), source.__getattribute__(key))
-            else:
-                self.assertTrue(np.all(source.grid.flatten() == destiny.grid.flatten()))
-
     def test_prepare_shape_for_rotation(self):
-        # (2, 0) -> (0, 1)
-        # (4, 5) -> (4, 6)
-        shape = self.shapes[0]
+        shape = self.shapes[0].shape_copy()
         shape.grid[0, 0].gameboard_position = Point(2, 5)
         shape.grid[1, 0].gameboard_position = Point(3, 5)
         shape.grid[2, 0].gameboard_position = Point(4, 5)
@@ -68,88 +58,151 @@ class GameTests(unittest.TestCase):
 
         self.assertEqual(Point(4, 5), shape.gameboard_pivot_position)
 
-    def test_rect_rotation_at_insert_point(self):
-        self.game.curr_shape = self.shapes[0]
-        ip = get_ip(self.game)
+        not_pivot_points = [i.gameboard_position for i in shape.grid.flatten() if not i.is_pivot]
+        self.assertTrue(np.all(not_pivot_points) is None)
 
-        self.game.curr_shape.grid[0, 0].gameboard_position = Point(2, 9)
-        self.game.curr_shape.grid[1, 0].gameboard_position = Point(3, 9)
-        self.game.curr_shape.grid[2, 0].gameboard_position = Point(4, 9)
-        self.game.curr_shape.grid[2, 0].is_pivot = True
-        self.game.curr_shape.grid[3, 0].gameboard_position = Point(5, 9)
+    def test_deep_shape_copy(self):
+        source = self.shapes[0].shape_copy()
+        destiny = source.shape_copy()
+        for key in destiny.__dict__.keys():
+            if key != 'grid':
+                self.assertEqual(destiny.__getattribute__(key), source.__getattribute__(key))
+            else:
+                self.assertEqual(destiny.grid[0], source.grid[0])
+        destiny.grid[0, 0] = 'change test'
+        self.assertNotEqual(source.grid[0, 0], 'change test')
+        self.assertEqual(destiny.grid[0, 0], 'change test')
+        self.assertFalse(source.grid[1, 0] is destiny.grid[1, 0])
 
-        self.assertEqual(ip, self.game.curr_shape.gameboard_pivot_position)
-        self.assertFalse(self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position),
-                         'Shape should not be rotable here')
-        self.game.put_shape_in_gameboard(ip)
-        self.game.rotate_curr_shape_clockwise()  # There is a conditional verification in rotate... So, test will pass
+    def test_analyze_rotation_at_frontiers(self):
+        self.game.curr_shape = self.shapes[0].shape_copy()
+        self.game.put_shape_in_gameboard(self.game.initial_shape_point_for_gameboard)
+        fake_shape = self.game.curr_shape.shape_copy()
+        fake_shape.prepare_shape_for_rotation()
+        self.assertFalse(self.game.analyze_rotation_at_frontiers(fake_shape.gameboard_pivot_position, fake_shape))
 
-    def test_rect_horizontal_rotation_checking_at_various_places(self):
-        self.game.curr_shape = self.shapes[1]  # ell
-        ip = Point(0, 5)
-        self.game.put_shape_in_gameboard(ip)
-        self.assertFalse(self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position))
-        self.game.move_curr_shape_right()
-        self.assertTrue(self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position))
-        self.game.rotate_curr_shape_clockwise()
-
-    def test_rect_vertical_rotation_checking_at_various_places(self):
-        self.game.curr_shape = self.shapes[0]
-        ip = get_ip(self.game)
-        self.game.put_shape_in_gameboard(ip)
-
-        self.assertFalse(
-            self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position)
-        )
-
-        self.game.gameboard = np.zeros_like(self.game.gameboard)  # now, one down
-        self.game.put_shape_in_gameboard(ip)
-        self.game.move_curr_shape_down()
-        self.assertFalse(
-            self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position)
-        )
-
-        self.game.gameboard = np.zeros_like(self.game.gameboard)  # now, two down
-        self.game.put_shape_in_gameboard(ip)
-        self.game.move_curr_shape_down()
-        self.game.move_curr_shape_down()
-        self.assertTrue(
-            self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position)
-        )
-
-    def test_rect_rotation_at_various_places(self):
+    def test_analyze_rotation_at_hood(self):
+        self.game.curr_shape = self.shapes[0].shape_copy()
+        self.game.put_shape_in_gameboard(Point(4, 7))  # considering neighborhood
+        fake_shape = self.game.curr_shape.shape_copy()
+        fake_shape.prepare_shape_for_rotation()
+        self.assertTrue(self.game.analyze_rotation_at_neighborhood(fake_shape.gameboard_pivot_position, fake_shape))
+        self.game.clear_curr_shape()
+        self.game.curr_shape = self.shapes[3]
+        self.game.put_shape_in_gameboard(Point(4, 6))
         self.game.curr_shape = self.shapes[0]
         self.game.put_shape_in_gameboard(Point(4, 7))
-        self.assertEqual(self.game.curr_shape.gameboard_pivot_position, Point(4, 7))
-        self.assertTrue(self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position))
-        self.game.rotate_curr_shape_clockwise()
+        fake_shape = self.game.curr_shape.shape_copy()
+        fake_shape.prepare_shape_for_rotation()
+        self.assertFalse(self.game.analyze_rotation_at_neighborhood(fake_shape.gameboard_pivot_position, fake_shape))
 
-    def test_rect_rotation_with_block_collision(self):
-        self.game.curr_shape = self.shapes[3]  # square
-        self.game.put_shape_in_gameboard(Point(6, 1))
-        self.game.curr_shape = self.shapes[3]  # square
-        self.game.put_shape_in_gameboard(Point(3, 1))
-        self.game.curr_shape = self.shapes[0]  # rect
-        self.game.put_shape_in_gameboard(Point(4, 2))
-        self.assertTrue(self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position))
-        self.game.rotate_curr_shape_clockwise()
-        print(self.game)
-        self.assertFalse(self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position))
+    def test_shape_offset_frontiers_based(self):
+        self.game.curr_shape = self.shapes[0].shape_copy()
+        self.game.put_shape_in_gameboard(self.game.initial_shape_point_for_gameboard)  # top case
+        self.assertEqual(Point(4, 7), self.game.shape_offset_frontiers_based())
+        self.game.clear_curr_shape()
 
-    def test_ell_rotation_with_block_collision(self):
-        self.game.curr_shape = self.shapes[3]  # square
-        self.game.put_shape_in_gameboard(Point(2, 1))
-        self.game.curr_shape = self.shapes[3]  # square
-        self.game.put_shape_in_gameboard(Point(7, 1))
-        self.game.curr_shape = self.shapes[2]  # ell
-        self.game.put_shape_in_gameboard(Point(4, 0))
-        self.assertTrue(self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position))
+        self.game.curr_shape = self.shapes[1]  # left case
+        self.game.put_shape_in_gameboard(Point(0, 5))
+        self.assertEqual(Point(1, 5), self.game.shape_offset_frontiers_based())
+        self.game.clear_curr_shape()
+
+        self.game.curr_shape = self.shapes[2]  # right case
+        self.game.put_shape_in_gameboard(Point(9, 5))
+        self.assertEqual(Point(8, 5), self.game.shape_offset_frontiers_based())
+        self.game.clear_curr_shape()
+
+        self.game.curr_shape = self.shapes[0]  # bottom case
+        self.game.put_shape_in_gameboard(Point(5, 0))
+        self.assertEqual(Point(5, 1), self.game.shape_offset_frontiers_based())
+        self.game.clear_curr_shape()
+
+    def test_rect_rotation(self):
+        self.game.curr_shape = self.shapes[0].shape_copy()
+
+        # Case: frontier at top -> translate pivot two squares down
+        self.game.put_shape_in_gameboard(self.game.initial_shape_point_for_gameboard)
         self.game.rotate_curr_shape_clockwise()
-        print(self.game)
-        self.assertFalse(self.game.is_curr_shape_rotable(self.game.curr_shape.gameboard_pivot_position))
+        self.assertEqual(Point(4, 7), self.game.curr_shape.gameboard_pivot_position)
+        self.game.reset()
+
+        # Case: blocking square shape -> shape won't rotate
+        self.game.curr_shape = self.shapes[3].shape_copy()
+        self.game.put_shape_in_gameboard(Point(5, 5))
+        self.game.curr_shape = self.shapes[0].shape_copy()
+        self.game.put_shape_in_gameboard(Point(5, 6))
+        status = self.game.rotate_curr_shape_clockwise()
+        self.assertFalse(status)
+        self.assertEqual(self.game.curr_shape.gameboard_pivot_position, Point(5, 6))
+        self.game.reset()
+
+        # Case: frontier at right and blocking shape -> shape won't rotate
+        self.game.curr_shape = self.shapes[3].shape_copy()
+        self.game.put_shape_in_gameboard(Point(8, 1))
+        self.game.curr_shape = self.shapes[0].shape_copy()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.put_shape_in_gameboard(Point(9, 1))
+        status = self.game.rotate_curr_shape_clockwise()
+        self.assertFalse(status)
+
+    def test_frontier_offset(self):
+        self.game.curr_shape = self.shapes[0].shape_copy()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.put_shape_in_gameboard(Point(9, 4))
+        self.assertEqual(
+            self.game.frontier_offset(Point(9, 4), self.game.curr_shape),
+            Point(-1, 0)
+        )  # right case
+        self.game.clear_curr_shape()
+        self.game.put_shape_in_gameboard(Point(0, 4))
+        self.assertEqual(
+            Point(1, 0),
+            self.game.frontier_offset(Point(0, 4), self.game.curr_shape)
+        )  # left case
+
+    def test_curr_shape_offset_without_block_collision(self):
+        self.game.curr_shape = self.shapes[0].shape_copy()
+        self.game.curr_shape.prepare_shape_for_rotation()
+
+        self.game.put_shape_in_gameboard(Point(9, 4))  # to left case
+        self.assertEqual(Point(7, 4), self.game.shape_offset_frontiers_based())
+
+        self.game.clear_curr_shape()
+
+        self.game.put_shape_in_gameboard(Point(0, 4))  # to right case
+        self.assertEqual(Point(1, 4), self.game.shape_offset_frontiers_based())
+
+        self.game.clear_curr_shape()
+
+        self.game.curr_shape = self.shapes[0].shape_copy()  # to down case
+        self.game.put_shape_in_gameboard(Point(4, 9))
+        self.assertEqual(Point(4, 7), self.game.shape_offset_frontiers_based())
+
+        self.game.clear_curr_shape()
+
+        self.game.put_shape_in_gameboard(Point(5, 5))
+        self.assertEqual(Point(5, 5), self.game.shape_offset_frontiers_based())  # no need translation case
+
+    def test_curr_shape_offset_with_block_collision(self):
+        ell = self.shapes[4].shape_copy()
+        rect = self.shapes[0].shape_copy()
+
+        self.game.curr_shape = ell
+        self.game.put_shape_in_gameboard(Point(7, 4))
+        self.game.curr_shape = rect
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.put_shape_in_gameboard(Point(9, 4))
+        self.assertEqual(None, self.game.shape_offset_frontiers_based())
+
+        self.game.gameboard = np.zeros_like(self.game.gameboard)
+        self.game.curr_shape = ell
+        self.game.put_shape_in_gameboard(Point(5, 4))
+        self.game.curr_shape = rect
+        self.game.put_shape_in_gameboard(Point(9, 4))
+        self.assertEqual(Point(7, 4), self.game.shape_offset_frontiers_based())
 
     def test_rect_right_translation_at_insert_point(self):
-        self.game.curr_shape = self.shapes[0]
+        self.game.curr_shape = self.shapes[0].shape_copy()
         ip = get_ip(self.game)
         self.game.put_shape_in_gameboard(ip)
         while self.game.curr_shape.right < self.game.width - 1:
@@ -158,13 +211,36 @@ class GameTests(unittest.TestCase):
         self.assertEqual(self.game.curr_shape.right, 9)
 
     def test_rect_left_translation_at_insert_point(self):
-        self.game.curr_shape = self.shapes[0]
+        self.game.curr_shape = self.shapes[0].shape_copy()
         ip = get_ip(self.game)
         self.game.put_shape_in_gameboard(ip)
         while self.game.curr_shape.left > 0:
             self.game.move_curr_shape_left()
         self.game.move_curr_shape_left()
         self.assertEqual(self.game.curr_shape.left, 0)
+
+    def test_get_group(self):
+        self.game.gameboard.T[:3] = Block()
+        self.game.gameboard.T[8:10] = Block()
+        self.assertEqual([{0, 1, 2}, {8, 9}], self.game.get_groups())
+
+    def test_remove_col_and_score(self):
+        self.game.gameboard.T[:3] = Block()
+        self.game.curr_shape = self.shapes[0]
+        self.game.put_shape_in_gameboard(Point(5, 3))
+        groups = self.game.get_groups()
+        for group in groups:
+            self.game.remove_col(group)
+            self.game.score(len(group))
+        self.game.gameboard_padding()
+        self.assertEqual(30, self.game.game_score)
+
+    def test_after_shape_cannot_fall(self):
+        self.game.curr_shape = self.shapes[0].shape_copy()
+        self.game.put_shape_in_gameboard(Point(5, 5))
+        self.game.gameboard.T[:3] = Block()
+        self.game.after_curr_shape_cannot_fall()
+        print(self.game)
 
 
 if __name__ == '__main__':
