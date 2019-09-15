@@ -1,5 +1,4 @@
 import asyncio
-import os
 from collections import namedtuple
 from concurrent.futures import FIRST_COMPLETED
 from copy import deepcopy
@@ -10,6 +9,16 @@ from numpy.random import randint
 
 Point = namedtuple('Point', ('x', 'y'))
 
+COLORS = {
+    "r": "\u001b[31m",
+    "g": "\u001b[32m",
+    "y": "\u001b[33m",
+    "m": "\u001b[35m",
+    "c": "\u001b[36m",
+    "w": "\u001b[37m",
+    "b": "\u001b[34m"
+}
+
 
 class Block(object):
     def __init__(self, color='w', is_pivot=False):
@@ -19,8 +28,8 @@ class Block(object):
 
     def __repr__(self):
         if self.is_pivot:
-            return u"\u25A0"
-        return u"\u25A1"
+            return COLOURS[self.color] + u"\u25A0"
+        return COLOURS[self.color] + u"\u25A1"
 
     def __eq__(self, other):
         if isinstance(other, Block):
@@ -75,25 +84,36 @@ class Shape(object):
     def gameboard_pivot_position(self, position: Point):
         self.grid[self.pivot.x, self.pivot.y].gameboard_position = position
 
+    @property
+    def lower_block_per_col(self):
+        for row in range(self.width):
+            min_col = np.min(np.nonzero(self.grid[row]))
+            yield self.grid[row, min_col].gameboard_position
+
     def can_shape_fall(self, gameboard):
-        for lin in range(self.left, self.right + 1):
-            if isinstance(gameboard[lin, self.bottom], Block):
-                if isinstance(gameboard[lin, self.bottom - 1], Block) or self.bottom == 0:
-                    return False
+        for lower in self.lower_block_per_col:
+            if isinstance(gameboard[lower.x, lower.y - 1], Block) or self.bottom == 0:
+                return False
         return True
 
+    def extremed_block_per_row(self, side):
+        for col in range(self.height):
+            if side == 'l':
+                side_row = np.min(np.nonzero(self.grid[:, col]))
+            else:
+                side_row = np.max(np.nonzero(self.grid[:, col]))
+            yield self.grid[side_row, col].gameboard_position
+
     def can_shape_move_left(self, gameboard):
-        for col in range(self.bottom, self.top + 1):
-            if isinstance(gameboard[self.left, col], Block):
-                if self.left == 0 or isinstance(gameboard[self.left - 1, col], Block):
-                    return False
+        for most_left in self.extremed_block_per_row(side='l'):
+            if self.left == 0 or isinstance(gameboard[most_left.x - 1, most_left.y], Block):
+                return False
         return True
 
     def can_shape_move_right(self, gameboard):
-        for col in range(self.bottom, self.top + 1):
-            if isinstance(gameboard[self.right, col], Block):
-                if self.right == np.shape(gameboard)[0] - 1 or isinstance(gameboard[self.right + 1, col], Block):
-                    return False
+        for most_right in self.extremed_block_per_row(side='r'):
+            if self.right == np.shape(gameboard)[0] - 1 or isinstance(gameboard[most_right.x + 1, most_right.y], Block):
+                return False
         return True
 
     def is_shape_on_gameboard_top(self, height):
@@ -162,25 +182,25 @@ class Shape(object):
 
 class ShapeGenerator:
     def __init__(self):
-        shape_1 = Shape(4, 1, shape_id=1)  # rect
+        shape_1 = Shape(4, 1, shape_id=1, color='r')  # rect
         shape_1.set_pivot((2, 0))
 
-        shape_2 = Shape(2, 3, description=((0, 0), (0, 1), (0, 2), (1, 0)), shape_id=2)  # ell
+        shape_2 = Shape(2, 3, description=((0, 0), (0, 1), (0, 2), (1, 0)), shape_id=2, color='g')  # ell
         shape_2.set_pivot((0, 1))
 
-        shape_3 = Shape(2, 3, description=((0, 0), (1, 0), (1, 1), (1, 2)), shape_id=3)  # mirrored ell
+        shape_3 = Shape(2, 3, description=((0, 0), (1, 0), (1, 1), (1, 2)), shape_id=3, color='y')  # mirrored ell
         shape_3.set_pivot((1, 1))
 
-        shape_4 = Shape(shape_id=4)  # square
+        shape_4 = Shape(shape_id=4, color='m')  # square
         shape_4.set_pivot((1, 1))
 
-        shape_5 = Shape(3, 2, description=((0, 0), (1, 0), (1, 1), (2, 1)), shape_id=5)  # unfinished 's'
+        shape_5 = Shape(3, 2, description=((0, 0), (1, 0), (1, 1), (2, 1)), shape_id=5, color='c')  # unfinished 's'
         shape_5.set_pivot((1, 0))
 
-        shape_6 = Shape(3, 2, description=((0, 1), (1, 1), (1, 0), (2, 0)), shape_id=6)  # unfinished 'z'
+        shape_6 = Shape(3, 2, description=((0, 1), (1, 1), (1, 0), (2, 0)), shape_id=6, color='w')  # unfinished 'z'
         shape_6.set_pivot((1, 0))
 
-        shape_7 = Shape(3, 2, description=((0, 0), (1, 0), (2, 0), (1, 1)), shape_id=7)  # symmetrical ell
+        shape_7 = Shape(3, 2, description=((0, 0), (1, 0), (2, 0), (1, 1)), shape_id=7, color='b')  # symmetrical ell
         shape_7.set_pivot((1, 0))
 
         self.shapes = [shape_1, shape_2, shape_3, shape_4, shape_5, shape_6, shape_7]
@@ -190,13 +210,13 @@ class ShapeGenerator:
 
 
 class Game(object):
-    def __init__(self, width=10, height=10):
+    def __init__(self, width=10, height=20):
         self.width = width
         self.height = height
         self.gameboard = np.zeros((width, height), object)
         self.game_score = 0
         self.level = 1
-        self.levels = {1: 0.75, 2: 0.25, 3: 0.125}  # todo response time varying with level
+        self.levels = {1: 1, 2: 0.25, 3: 0.125}  # todo response time varying with level
         self.curr_shape = None
         self.shape_generator = ShapeGenerator()
         self.is_game_over = False
@@ -207,14 +227,14 @@ class Game(object):
             'r': self.rotate_curr_shape_clockwise,
         }
         self._get_back_to_shape_generation = False
-        self.initial_points = {  # todo generalize this for width, heigth != 10, 10
-            1: Point(4, 9),
-            2: Point(4, 8),
-            3: Point(5, 8),
-            4: Point(4, 9),
-            5: Point(4, 8),
-            6: Point(4, 8),
-            7: Point(4, 8)
+        self.initial_points = {
+            1: Point(4, self.height - 1),
+            2: Point(4, self.height - 2),
+            3: Point(5, self.height - 2),
+            4: Point(4, self.height - 1),
+            5: Point(4, self.height - 2),
+            6: Point(4, self.height - 2),
+            7: Point(4, self.height - 2)
         }
 
     def __repr__(self):
@@ -423,7 +443,7 @@ class Game(object):
         while True:
             if keyboard.is_pressed('r'):
                 self.rotate_curr_shape_clockwise()
-            yield from asyncio.sleep(self.sleep_time)
+            yield from asyncio.sleep(2 * self.sleep_time)
 
     @asyncio.coroutine
     def trigger_timer(self):
@@ -433,7 +453,6 @@ class Game(object):
     @asyncio.coroutine
     def inline_rendering(self):
         while True:
-            os.system("clear")
             print(self, "SCORE = {}".format(self.game_score))
             yield from asyncio.sleep(0)
 
