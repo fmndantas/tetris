@@ -12,7 +12,7 @@ def get_ip(game: tetris.Game) -> Point:
 
 class GameTests(unittest.TestCase):
     def setUp(self):
-        self.game = tetris.Game()
+        self.game = tetris.Game(height=10)
         self.shapes = self.game.shape_generator.shapes
 
     def test_shape_generation(self):
@@ -235,12 +235,52 @@ class GameTests(unittest.TestCase):
         self.game.gameboard_padding()
         self.assertEqual(30, self.game.game_score)
 
-    def test_after_shape_cannot_fall(self):
-        self.game.curr_shape = self.shapes[0].shape_copy()
+    def test_ell_shape(self):
+        self.game.curr_shape = self.shapes[3]
+        self.game.put_shape_in_gameboard(Point(5, 2))
+        self.game.put_shape_in_gameboard(Point(8, 2))
+        self.game.curr_shape = self.shapes[1].shape_copy()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.put_shape_in_gameboard(Point(6, 3))
+        self.game.move_curr_shape_down()
+        self.game.move_curr_shape_down()
+
+    def test_lower_block_per_col(self):
+        self.game.curr_shape = self.shapes[1].shape_copy()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.curr_shape.prepare_shape_for_rotation()
         self.game.put_shape_in_gameboard(Point(5, 5))
-        self.game.gameboard.T[:3] = Block()
-        self.game.after_curr_shape_cannot_fall()
-        print(self.game)
+        gen = self.game.curr_shape.lower_block_per_col
+        self.assertEqual(Point(4, 6), next(gen))
+        self.assertEqual(Point(5, 4), next(gen))
+
+    def test_most_left_block_per_row(self):
+        self.game.curr_shape = self.shapes[1].shape_copy()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.put_shape_in_gameboard(Point(1, 1))
+        gen = self.game.curr_shape.extremed_block_per_row(side='l')
+        self.assertEqual(Point(1, 0), next(gen))
+        self.assertEqual(Point(1, 1), next(gen))
+        self.assertEqual(Point(0, 2), next(gen))
+
+    def test_most_right_block_per_row(self):
+        self.game.curr_shape = self.shapes[1].shape_copy()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.put_shape_in_gameboard(Point(1, 1))
+        gen = self.game.curr_shape.extremed_block_per_row(side='r')
+        self.assertEqual(Point(1, 0), next(gen))
+        self.assertEqual(Point(1, 1), next(gen))
+        self.assertEqual(Point(1, 2), next(gen))
+
+    def test_can_move_right(self):
+        self.game.curr_shape = self.shapes[1].shape_copy()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.curr_shape.prepare_shape_for_rotation()
+        self.game.put_shape_in_gameboard(Point(1, 1))
+        self.assertTrue(self.game.curr_shape.can_shape_move_right(self.game.gameboard))
 
 
 if __name__ == '__main__':

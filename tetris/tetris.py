@@ -1,6 +1,5 @@
 import asyncio
 from collections import namedtuple
-from concurrent.futures import FIRST_COMPLETED
 from copy import deepcopy
 
 import keyboard
@@ -28,8 +27,8 @@ class Block(object):
 
     def __repr__(self):
         if self.is_pivot:
-            return COLOURS[self.color] + u"\u25A0"
-        return COLOURS[self.color] + u"\u25A1"
+            return COLORS[self.color] + u"\u25A0"
+        return COLORS[self.color] + u"\u25A1"
 
     def __eq__(self, other):
         if isinstance(other, Block):
@@ -216,7 +215,7 @@ class Game(object):
         self.gameboard = np.zeros((width, height), object)
         self.game_score = 0
         self.level = 1
-        self.levels = {1: 1, 2: 0.25, 3: 0.125}  # todo response time varying with level
+        self.levels = [(1 / i) for i in range(1, 20)]
         self.curr_shape = None
         self.shape_generator = ShapeGenerator()
         self.is_game_over = False
@@ -417,65 +416,57 @@ class Game(object):
             return True
         return False
 
-    @asyncio.coroutine
-    def right(self):
+    async def right(self):
         while True:
             if keyboard.is_pressed('d'):
                 self.move_curr_shape_right()
-            yield from asyncio.sleep(self.sleep_time)
+            await asyncio.sleep(0.05)
 
-    @asyncio.coroutine
-    def left(self, k=1):
+    async def left(self, k=1):
         while True:
             if keyboard.is_pressed('a'):
                 self.move_curr_shape_left()
-            yield from asyncio.sleep(self.sleep_time)
+            await asyncio.sleep(0.05)
 
-    @asyncio.coroutine
-    def down(self):
+    async def down(self):
         while True:
             if keyboard.is_pressed('s'):
                 self.move_curr_shape_down()
-            yield from asyncio.sleep(self.sleep_time)
+            await asyncio.sleep(0.05)
 
-    @asyncio.coroutine
-    def rotate(self):
+    async def rotate(self):
         while True:
             if keyboard.is_pressed('r'):
                 self.rotate_curr_shape_clockwise()
-            yield from asyncio.sleep(2 * self.sleep_time)
+            await asyncio.sleep(0.1)
 
-    @asyncio.coroutine
-    def trigger_timer(self):
+    async def natural_falling(self):
         self.move_curr_shape_down()  # fall shape one time (natural falling)
-        yield from asyncio.sleep(self.levels[self.level])
 
-    @asyncio.coroutine
-    def inline_rendering(self):
+    async def inline_rendering(self):
         while True:
-            print(self, "SCORE = {}".format(self.game_score))
-            yield from asyncio.sleep(0)
-
-    def __loop(self):
-        futures = [
-            self.right(),
-            self.left(),
-            self.down(),
-            self.rotate(),
-            self.trigger_timer(),
-            self.inline_rendering()
-        ]
-        done, pendent = yield from asyncio.wait(futures, return_when=FIRST_COMPLETED)
-        for future in pendent:
-            future.cancel()
-        if not self.curr_shape.can_shape_fall(self.gameboard):
-            self.after_curr_shape_cannot_fall()
-            self._get_back_to_shape_generation = True
+            print(self, "SCORE {}, LEVEL {}".format(self.game_score, self.level))
+            await asyncio.sleep(0.0)
 
     def __trigger_loop(self):
         ioloop = asyncio.new_event_loop()
-        ioloop.run_until_complete(self.__loop())
-        ioloop.close()
+        asyncio.set_event_loop(ioloop)
+        fts = asyncio.gather(
+            self.inline_rendering(),
+            self.left(),
+            self.right(),
+            self.down(),
+            self.rotate(),
+            self.natural_falling()
+        )
+        try:
+            ioloop.run_until_complete(asyncio.wait_for(fts, self.levels[self.level]))
+        except asyncio.TimeoutError:
+            fts.cancel()
+        finally:
+            if not self.curr_shape.can_shape_fall(self.gameboard):
+                self.after_curr_shape_cannot_fall()
+                self._get_back_to_shape_generation = True
 
     def game_over(self):
         self.is_game_over = True
@@ -489,6 +480,7 @@ class Game(object):
 
     def score(self, group_lenght):
         self.game_score += self.current_increase * group_lenght
+        self.level = max(int(self.game_score / 50), 1)
 
     def get_groups(self):
         groups, visited = [], {}
@@ -521,7 +513,7 @@ class Game(object):
             self.score(len(group))
         self.gameboard_padding()
 
-    def _start(self):
+    def loop(self):
         while not self.is_game_over:
             self._get_back_to_shape_generation = False
             self.generate_next_shape()
@@ -544,4 +536,4 @@ class Render(Game):
 
 
 def main():
-    Game()._start()
+    Game().loop()
