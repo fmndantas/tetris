@@ -22,7 +22,7 @@ setup(
     packages=["tetris"],
     scripts=["bin/tetris"],
     test_suite="tetris/tests/game_tests:GameTests",
-    install_requires=["numpy", "keyboard"],
+    install_requires=["numpy", "keyboard", "opencv-python", "Pillow"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

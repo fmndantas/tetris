@@ -1,44 +1,46 @@
+#!/usr/bin/python
+
 import asyncio
 from collections import namedtuple
 from copy import deepcopy
 
+import cv2.cv2 as _cv2
 import keyboard
 import numpy as np
+from PIL import Image
 from numpy.random import randint
 
 Point = namedtuple('Point', ('x', 'y'))
 
-COLORS = {
-    "r": "\u001b[31m",
-    "g": "\u001b[32m",
-    "y": "\u001b[33m",
-    "m": "\u001b[35m",
-    "c": "\u001b[36m",
-    "w": "\u001b[37m",
-    "b": "\u001b[34m"
+RGB_COLORS = {
+    0: (255, 255, 255),  # white
+    1: (50, 50, 50),  # black
+    2: (50, 50, 255),  # red
+    3: (50, 255, 50),  # green
+    4: (255, 50, 50),  # blue
+    5: (200, 75, 75),
+    6: (75, 200, 75),
+    7: (75, 75, 200)
 }
 
 
 class Block(object):
-    def __init__(self, color='w', is_pivot=False):
+    def __init__(self, color, is_pivot=False):
         self.color = color
         self.is_pivot = is_pivot
         self.gameboard_position = None
 
     def __repr__(self):
         if self.is_pivot:
-            return COLORS[self.color] + u"\u25A0"
-        return COLORS[self.color] + u"\u25A1"
+            return u"\u25A0"
+        return u"\u25A1"
 
-    def __eq__(self, other):
-        if isinstance(other, Block):
-            return self.color == other.color \
-                   and self.is_pivot == other.is_pivot \
-                   and self.gameboard_position == other.gameboard_position
+    def __int__(self):
+        return self.color
 
 
 class Shape(object):
-    def __init__(self, width=2, height=2, description=None, color='w', shape_id=None):
+    def __init__(self, width=2, height=2, description=None, color=1, shape_id=None):
         self.width = width
         self.height = height
         self.grid = np.zeros((self.width, self.height), object)
@@ -47,15 +49,7 @@ class Shape(object):
         self.set_shape(description)
         self.shape_id = shape_id
 
-    def __eq__(self, other):
-        for i in range(self.width):
-            for j in range(self.height):
-                if self.grid[i, j] != other.grid[i, j]:
-                    return False
-        return True
-
     def set_shape(self, description):
-        """Set shape topology"""
         if description is None:
             for i in range(np.shape(self.grid)[0]):
                 for j in range(np.shape(self.grid)[1]):
@@ -65,18 +59,11 @@ class Shape(object):
                 self.grid[pos] = Block(color=self.color)
 
     def set_pivot(self, pivot_pos: tuple):
-        """Set Pivot inside Shape.grid
-
-        Parameters
-        ----------
-        pivot_pos: tuple with pivot coordinates in Shape.grid coordinates
-        """
         self.grid[pivot_pos].is_pivot = True
         self.pivot = Point(*pivot_pos)
 
     @property
     def gameboard_pivot_position(self):
-        """Get pivot position in Game.gameboard coordinates"""
         return self.grid[self.pivot].gameboard_position
 
     @gameboard_pivot_position.setter
@@ -99,8 +86,10 @@ class Shape(object):
         for col in range(self.height):
             if side == 'l':
                 side_row = np.min(np.nonzero(self.grid[:, col]))
-            else:
+            elif side == 'r':
                 side_row = np.max(np.nonzero(self.grid[:, col]))
+            else:
+                raise ValueError(f"Invalid side '{side}'")
             yield self.grid[side_row, col].gameboard_position
 
     def can_shape_move_left(self, gameboard):
@@ -147,12 +136,6 @@ class Shape(object):
                    if isinstance(self.grid[lin, col], Block))
 
     def prepare_shape_for_rotation(self, sense='cw'):
-        """Update all-related grid data for a rotated Shape\n
-
-        Parameters
-        ----------
-        sense: 'cw' -> clockwise, 'ccw' -> counter-clockwise
-        """
         k = 3
         if sense == 'ccw':
             k = 1
@@ -175,31 +158,28 @@ class Shape(object):
     def __repr__(self):
         return str(np.rot90(self.grid)).replace('[', ' ').replace(']', ' ').replace('0', ' ')
 
-    def __str__(self):
-        return str(np.rot90(self.grid)).replace('[', ' ').replace(']', ' ').replace('0', ' ')
-
 
 class ShapeGenerator:
     def __init__(self):
-        shape_1 = Shape(4, 1, shape_id=1, color='r')  # rect
+        shape_1 = Shape(4, 1, shape_id=1, color=1)  # rect
         shape_1.set_pivot((2, 0))
 
-        shape_2 = Shape(2, 3, description=((0, 0), (0, 1), (0, 2), (1, 0)), shape_id=2, color='g')  # ell
+        shape_2 = Shape(2, 3, description=((0, 0), (0, 1), (0, 2), (1, 0)), shape_id=2, color=2)  # ell
         shape_2.set_pivot((0, 1))
 
-        shape_3 = Shape(2, 3, description=((0, 0), (1, 0), (1, 1), (1, 2)), shape_id=3, color='y')  # mirrored ell
+        shape_3 = Shape(2, 3, description=((0, 0), (1, 0), (1, 1), (1, 2)), shape_id=3, color=3)  # mirrored ell
         shape_3.set_pivot((1, 1))
 
-        shape_4 = Shape(shape_id=4, color='m')  # square
+        shape_4 = Shape(shape_id=4, color=4)  # square
         shape_4.set_pivot((1, 1))
 
-        shape_5 = Shape(3, 2, description=((0, 0), (1, 0), (1, 1), (2, 1)), shape_id=5, color='c')  # unfinished 's'
+        shape_5 = Shape(3, 2, description=((0, 0), (1, 0), (1, 1), (2, 1)), shape_id=5, color=5)  # unfinished 's'
         shape_5.set_pivot((1, 0))
 
-        shape_6 = Shape(3, 2, description=((0, 1), (1, 1), (1, 0), (2, 0)), shape_id=6, color='w')  # unfinished 'z'
+        shape_6 = Shape(3, 2, description=((0, 1), (1, 1), (1, 0), (2, 0)), shape_id=6, color=6)  # unfinished 'z'
         shape_6.set_pivot((1, 0))
 
-        shape_7 = Shape(3, 2, description=((0, 0), (1, 0), (2, 0), (1, 1)), shape_id=7, color='b')  # symmetrical ell
+        shape_7 = Shape(3, 2, description=((0, 0), (1, 0), (2, 0), (1, 1)), shape_id=7, color=7)  # symmetrical ell
         shape_7.set_pivot((1, 0))
 
         self.shapes = [shape_1, shape_2, shape_3, shape_4, shape_5, shape_6, shape_7]
@@ -209,15 +189,17 @@ class ShapeGenerator:
 
 
 class Game(object):
-    def __init__(self, width=10, height=20):
+    def __init__(self, width=12, height=22, mode="imgrend"):
         self.width = width
         self.height = height
-        self.gameboard = np.zeros((width, height), object)
         self.game_score = 0
+        self.mode = mode
         self.level = 1
         self.levels = [(1 / i) for i in range(1, 20)]
-        self.curr_shape = None
+        self.pressed = 0
+        self.crr_sh = None
         self.shape_generator = ShapeGenerator()
+        self.gameboard = np.zeros((width, height), object)
         self.is_game_over = False
         self.kys2move = {
             'a': self.move_curr_shape_right,
@@ -233,13 +215,10 @@ class Game(object):
             4: Point(4, self.height - 1),
             5: Point(4, self.height - 2),
             6: Point(4, self.height - 2),
-            7: Point(4, self.height - 2)
+            7: Point(4, self.height - 2),
         }
 
     def __repr__(self):
-        return np.rot90(self.gameboard).__str__().replace('0', '.')
-
-    def __str__(self):
         return np.rot90(self.gameboard).__str__().replace('0', '.')
 
     def reset(self):
@@ -247,15 +226,14 @@ class Game(object):
 
     @property
     def sleep_time(self):
-        return 0.05 / self.level
+        return 0.045
 
     def generate_next_shape(self, ):
-        self.curr_shape = self.shape_generator(randint(0, 7))
+        self.crr_sh = self.shape_generator(randint(0, len(self.shape_generator.shapes)))
 
-    @staticmethod
-    def fake_gameboard_points_and_shape_points(insertion_point: Point, shape: Shape):
-        """Emulate the emitted points when shape is being inserted on gameboard
-        """
+    def gb_sh_pts(self, insertion_point: Point, shape: Shape = None):
+        if not shape:
+            shape = self.crr_sh
         pivot, grid = shape.pivot, shape.grid
         for lin in range(shape.width):
             for col in range(shape.height):
@@ -265,32 +243,19 @@ class Game(object):
                     gb = Point(insertion_point.x + distx, insertion_point.y + disty)
                     yield gb, Point(lin, col)
 
-    def gameboard_points_and_shape_points(self, insertion_point: Point):
-        pivot, grid = self.curr_shape.pivot, self.curr_shape.grid
-        for lin in range(self.curr_shape.width):
-            for col in range(self.curr_shape.height):
-                if isinstance(grid[lin, col], Block):
-                    distx = lin - pivot.x
-                    disty = col - pivot.y
-                    gb = Point(insertion_point.x + distx, insertion_point.y + disty)
-                    yield gb, Point(lin, col)
-
-    def clear_curr_shape(self):
-        for gb_point, s_point in self.gameboard_points_and_shape_points(self.curr_shape.gameboard_pivot_position):
+    def clear_crr_sh(self):
+        for gb_point, s_point in self.gb_sh_pts(self.crr_sh.gameboard_pivot_position):
             if isinstance(self.gameboard[gb_point.x, gb_point.y], Block):
                 self.gameboard[gb_point.x, gb_point.y] = 0
 
     @property
     def initial_shape_point_for_gameboard(self):
-        """Returns the initial gameboard point based on shape id"""
-        return self.initial_points[self.curr_shape.shape_id]
+        return self.initial_points[self.crr_sh.shape_id]
 
     def gameboard_copy(self, mode):
-        """Returns a copy of current gameboard without the most recently version of current_shape
-        """
         copy = deepcopy(self.gameboard)
         if mode == "no_current_shape":
-            fake_shape = self.curr_shape.shape_copy()
+            fake_shape = self.crr_sh.shape_copy()
             fake_coords = set([fake_shape.grid[i, j].gameboard_position
                                for i in range(fake_shape.width)
                                for j in range(fake_shape.height)
@@ -301,23 +266,26 @@ class Game(object):
         return copy
 
     def analyze_rotation_at_frontiers(self, insertion_point: Point, prepared_fake_shape: Shape):
-        for g, _ in self.fake_gameboard_points_and_shape_points(insertion_point, prepared_fake_shape):
+        for g, _ in self.gb_sh_pts(insertion_point, prepared_fake_shape):
             if not (0 <= g.x < self.width and 0 <= g.y < self.height):
                 return False
         return True
 
     def analyze_rotation_at_neighborhood(self, insertion_point: Point, prepared_fake_shape: Shape):
         fake_gameboard = self.gameboard_copy(mode="no_current_shape")
-        for g, _ in self.fake_gameboard_points_and_shape_points(insertion_point, prepared_fake_shape):
-            if isinstance(fake_gameboard[g.x, g.y], Block):
-                return False
+        for g, _ in self.gb_sh_pts(insertion_point, prepared_fake_shape):
+            try:
+                if isinstance(fake_gameboard[g.x, g.y], Block):
+                    return False
+            except IndexError:
+                pass
         return True
 
     def frontier_offset(self, insertion_point: Point, shape: Shape):
         """Returns the displacement that is used by curr_shape_offset to
         perform translation after rotation
         """
-        for g, _ in self.fake_gameboard_points_and_shape_points(insertion_point, shape):
+        for g, _ in self.gb_sh_pts(insertion_point, shape):
             if g.x >= self.width - 1:
                 return Point(-1, 0)
             elif g.x <= 0:
@@ -335,20 +303,15 @@ class Game(object):
         before rotation happens, False is returned in order to avoid future
         rotations
         """
-        fake_gameboard = self.gameboard_copy(mode="no_current_shape")
         if fake_shape is None:
-            fake_shape = self.curr_shape.shape_copy()
+            fake_shape = self.crr_sh.shape_copy()
             fake_shape.prepare_shape_for_rotation()
         updated_pivot = Point(
             fake_shape.gameboard_pivot_position.x + offset.x,
             fake_shape.gameboard_pivot_position.y + offset.y
         )
-        for g, _ in self.fake_gameboard_points_and_shape_points(updated_pivot, fake_shape):
-            try:
-                if isinstance(fake_gameboard[g.x, g.y], Block):
-                    return None  # can't rotate
-            except IndexError:
-                break
+        if not self.analyze_rotation_at_neighborhood(updated_pivot, fake_shape):
+            return None
         fake_shape.gameboard_pivot_position = updated_pivot
         if not self.analyze_rotation_at_frontiers(updated_pivot, fake_shape):
             offset = self.frontier_offset(updated_pivot, fake_shape)
@@ -360,46 +323,46 @@ class Game(object):
         this method has the same function than analyze_rotation_at_neighborhood
         """
         if not fake_shape:
-            fake_shape = self.curr_shape.shape_copy()
+            fake_shape = self.crr_sh.shape_copy()
             fake_shape.prepare_shape_for_rotation()
         insertion_point = fake_shape.gameboard_pivot_position
         if self.analyze_rotation_at_neighborhood(insertion_point, fake_shape):
-            return insertion_point
-        return None
+            return insertion_point  # can rotate
+        return None  # can't rotate
 
-    def is_curr_shape_insertable(self, intl_pnt: Point):
-        for gb_point, _ in self.gameboard_points_and_shape_points(intl_pnt):
+    def is_crr_sh_insertable(self, intl_pnt: Point):
+        for gb_point, _ in self.gb_sh_pts(intl_pnt):
             if isinstance(self.gameboard[gb_point.x, gb_point.y], Block):
                 return False
         return True
 
     def put_shape_in_gameboard(self, insertion_point: Point):
-        pivot, grid = self.curr_shape.pivot, self.curr_shape.grid
-        for gb_point, s_point in self.gameboard_points_and_shape_points(insertion_point):
+        pivot, grid = self.crr_sh.pivot, self.crr_sh.grid
+        for gb_point, s_point in self.gb_sh_pts(insertion_point):
             if isinstance(grid[s_point.x, s_point.y], Block):
                 self.gameboard[gb_point.x, gb_point.y] = grid[s_point.x, s_point.y]  # Game.gameboard
                 self.gameboard[gb_point.x, gb_point.y].gameboard_position = gb_point  # Blocks.gameboard_position
 
     def move_curr_shape_right(self):
-        if self.curr_shape.can_shape_move_right(self.gameboard):
-            pivot = self.curr_shape.gameboard_pivot_position
-            self.clear_curr_shape()
+        if self.crr_sh.can_shape_move_right(self.gameboard):
+            pivot = self.crr_sh.gameboard_pivot_position
+            self.clear_crr_sh()
             self.put_shape_in_gameboard(Point(pivot.x + 1, pivot.y))
 
     def move_curr_shape_left(self):
-        if self.curr_shape.can_shape_move_left(self.gameboard):
-            pivot = self.curr_shape.gameboard_pivot_position
-            self.clear_curr_shape()
+        if self.crr_sh.can_shape_move_left(self.gameboard):
+            pivot = self.crr_sh.gameboard_pivot_position
+            self.clear_crr_sh()
             self.put_shape_in_gameboard(Point(pivot.x - 1, pivot.y))
 
     def move_curr_shape_down(self):
-        if self.curr_shape.can_shape_fall(self.gameboard):
-            pivot = self.curr_shape.gameboard_pivot_position
-            self.clear_curr_shape()
+        if self.crr_sh.can_shape_fall(self.gameboard):
+            pivot = self.crr_sh.gameboard_pivot_position
+            self.clear_crr_sh()
             self.put_shape_in_gameboard(Point(pivot.x, pivot.y - 1))
 
     def rotate_curr_shape_clockwise(self):
-        fake_shape = self.curr_shape.shape_copy()
+        fake_shape = self.crr_sh.shape_copy()
         fake_shape.prepare_shape_for_rotation()
         insertion_point = fake_shape.gameboard_pivot_position
         if not self.analyze_rotation_at_frontiers(insertion_point, fake_shape):
@@ -409,10 +372,9 @@ class Game(object):
         else:
             candidate_point = insertion_point
         if isinstance(candidate_point, Point):
-            insertion_point = candidate_point
-            self.clear_curr_shape()
-            self.curr_shape.prepare_shape_for_rotation()
-            self.put_shape_in_gameboard(insertion_point)
+            self.clear_crr_sh()
+            self.crr_sh.prepare_shape_for_rotation()
+            self.put_shape_in_gameboard(candidate_point)
             return True
         return False
 
@@ -420,53 +382,69 @@ class Game(object):
         while True:
             if keyboard.is_pressed('d'):
                 self.move_curr_shape_right()
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(self.sleep_time)
 
-    async def left(self, k=1):
+    async def left(self):
         while True:
             if keyboard.is_pressed('a'):
                 self.move_curr_shape_left()
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(self.sleep_time)
 
     async def down(self):
         while True:
             if keyboard.is_pressed('s'):
                 self.move_curr_shape_down()
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(self.sleep_time)
 
     async def rotate(self):
         while True:
-            if keyboard.is_pressed('r'):
+            if keyboard.is_pressed('r') and not self.pressed:
                 self.rotate_curr_shape_clockwise()
-            await asyncio.sleep(0.1)
+                self.pressed = 1
+            if not keyboard.is_pressed('r'):
+                self.pressed = 0
+            await asyncio.sleep(0)
 
     async def natural_falling(self):
         self.move_curr_shape_down()  # fall shape one time (natural falling)
 
-    async def inline_rendering(self):
+    async def image_rendering(self):
         while True:
-            print(self, "SCORE {}, LEVEL {}".format(self.game_score, self.level))
-            await asyncio.sleep(0.0)
+            scene = Image.fromarray(self.cgameboard, mode="RGB").resize((256, 512))
+            scene = np.array(scene)
+            _cv2.putText(
+                scene, "Score = {}".format(self.game_score), (10, 30),
+                _cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2
+            )
+            _cv2.imshow("Tetris", scene)
+            _cv2.waitKey(1)
+            await asyncio.sleep(0)
+
+    @property
+    def cgameboard(self):
+        colourize = lambda x: RGB_COLORS[x]
+        source = np.array(self.gameboard, dtype=int)
+        colors = list(map(colourize, source.flatten()))
+        return np.rot90(np.array(colors, dtype=np.uint8).reshape((self.width, self.height, 3)))
 
     def __trigger_loop(self):
         ioloop = asyncio.new_event_loop()
         asyncio.set_event_loop(ioloop)
-        fts = asyncio.gather(
-            self.inline_rendering(),
-            self.left(),
-            self.right(),
-            self.down(),
-            self.rotate(),
-            self.natural_falling()
-        )
+        ftslst = [self.left(), self.right(), self.down(), self.rotate(), self.natural_falling(), self.image_rendering()]
+        fts = asyncio.gather(*ftslst, return_exceptions=True)
         try:
-            ioloop.run_until_complete(asyncio.wait_for(fts, self.levels[self.level]))
+            ioloop.run_until_complete(asyncio.wait_for(fts, self.levels[self.level]))  # instant loop
         except asyncio.TimeoutError:
             fts.cancel()
-        finally:
-            if not self.curr_shape.can_shape_fall(self.gameboard):
-                self.after_curr_shape_cannot_fall()
+            if not self.crr_sh.can_shape_fall(self.gameboard):
+                self.when_crr_sh_cant_fall()
                 self._get_back_to_shape_generation = True
+        except KeyboardInterrupt:
+            fts.cancel()
+            self.game_over()
+            self._get_back_to_shape_generation = True
+        finally:
+            ioloop.close()
 
     def game_over(self):
         self.is_game_over = True
@@ -479,8 +457,8 @@ class Game(object):
         return 10 * self.level
 
     def score(self, group_lenght):
-        self.game_score += self.current_increase * group_lenght
-        self.level = max(int(self.game_score / 50), 1)
+        self.game_score += self.current_increase * (2 ** group_lenght)
+        self.level = max(int(self.game_score / 150), 1)
 
     def get_groups(self):
         groups, visited = [], {}
@@ -503,10 +481,9 @@ class Game(object):
             axis=1,
         )
 
-    def after_curr_shape_cannot_fall(self):
-        if self.curr_shape.is_shape_on_gameboard_top(self.height):
+    def when_crr_sh_cant_fall(self):
+        if self.crr_sh.is_shape_on_gameboard_top(self.height):
             self.game_over()
-            return
         groups = self.get_groups()
         for group in groups:
             self.remove_col(group)
@@ -518,22 +495,16 @@ class Game(object):
             self._get_back_to_shape_generation = False
             self.generate_next_shape()
             intl_pnt = self.initial_shape_point_for_gameboard
-            if self.is_curr_shape_insertable(intl_pnt):
+            if self.is_crr_sh_insertable(intl_pnt):
                 self.put_shape_in_gameboard(intl_pnt)
             else:
                 self.game_over()
                 continue
-            if self.curr_shape.can_shape_fall(self.gameboard):
+            if self.crr_sh.can_shape_fall(self.gameboard):
                 while not self._get_back_to_shape_generation:
                     self.__trigger_loop()  # fall shape one time and trigger loop N ms
                 continue
-        print('FINALE GAME OVER!')
 
 
-class Render(Game):
-    def __init__(self):
-        super().__init__()
-
-
-def main():
-    Game().loop()
+def main(mode="imgrend"):
+    Game(mode=mode).loop()
