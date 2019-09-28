@@ -67,8 +67,8 @@ class GameTests(unittest.TestCase):
         for key in destiny.__dict__.keys():
             if key != 'grid':
                 self.assertEqual(destiny.__getattribute__(key), source.__getattribute__(key))
-            # else:
-            #     self.assertEqual(destiny.grid[0], source.grid[0])
+            else:
+                self.assertEqual(type(destiny.grid[0]), type(source.grid[0]))
         destiny.grid[0, 0] = 'change test'
         self.assertNotEqual(source.grid[0, 0], 'change test')
         self.assertEqual(destiny.grid[0, 0], 'change test')

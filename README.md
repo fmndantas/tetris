@@ -13,7 +13,7 @@ will run properly only if it was installed as root.
 To install from source, proceed with
 
 ```
-git clone http://github.com/fmndantas/tetris.git
+git clone https://github.com/fmndantas/tetris.git
 cd tetris
 sudo pip3 install .
 ```
@@ -22,4 +22,8 @@ sudo pip3 install .
 
 ### Linux
 
-``sudo tetris``
+With ``sudo tetris`` you run the game. The movements are performed with keyboard, through
+* ``a``: move shape to left
+* ``d``: move shape to right
+* ``s``: move shape down
+* ``r``: rotate current shape
