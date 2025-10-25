@@ -1,32 +1,40 @@
-# tetris
+# Tetris
 
-Classic game made with python
+The classic **Tetris** game implemented as a **CLI** tool in Python.
 
-![](demo_tetris.gif)
+This project demonstrates the creation of a functional game with board logic and state manipulation. It also served as the starting point for my studies in **Test-Driven Development (TDD)**.
 
-## Installation
+---
 
-### Linux
+## 🛠️ Tech Stack
 
-One of the dependencies is the keyboard package, that
-will run properly only if it was installed as root. 
-To install from source, proceed with
+* **Language:** Python
+* **Testing:** TDD (Initial Learning Phase)
 
-```
-git clone https://github.com/fmndantas/tetris.git
+---
+
+## 💡 Technical Evolution (Postnotes)
+
+Developed early in my journey, this project reflects an older phase of my coding practices. While functional, the design exhibits high coupling, which provided me with a **valuable lesson on the cost of refactoring** and the importance of **Design Patterns**.
+
+---
+
+## Installation and Execution (Linux)
+
+Due to the reliance on the `keyboard` package on Linux, both installation and execution require root privileges.
+
+### Installation
+
+```bash
+git clone [https://github.com/fmndantas/tetris.git](https://github.com/fmndantas/tetris.git)
 cd tetris
 sudo pip3 install .
 ```
 
-## Run game
+### Running
 
-### Linux
-
-With ``sudo tetris`` you run the game. The movements are performed with keyboard, through
-* ``a``: move shape to left
-* ``d``: move shape to right
-* ``s``: move shape down
-* ``r``: rotate current shape
-
-## An important observation
-At the time of Tetris development, I had no knowledge about Desing Patterns and other advanced topics related to the object-oriented paradigm. Due to my ignorance, the code is high-coupled and certainly isn't easily extensible. I have no plans for refactoring any time soon.
+Run the game with sudo tetris. Control is done via the keyboard:
+- a: Move left
+- d: Move right
+- s: Move down (soft drop)
+- r: Rotate current shape
